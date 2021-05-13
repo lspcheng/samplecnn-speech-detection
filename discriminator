@@ -26,7 +26,16 @@ parser.add_argument("audiofile", help="Audio file.")
 
 args = parser.parse_args()
 
+if not os.path.exists('output'):
+    os.makedirs('output')
+
 with tempfile.TemporaryDirectory(suffix="-discriminator") as tmpdir:
+    # Get name of audiofile
+    fn = os.path.splitext(args.audiofile)[0]
+    av = str(args.alpha).replace(".", "")
+    raw_out = os.path.join('output','{0}_{1}_raw_output.txt'.format(fn, av))
+    text_out = os.path.join('output','{0}_{1}_text_output.txt'.format(fn, av))
+
     # Convert input to proper format (16 kHz, mono)
     output = os.path.join(tmpdir, "16khz.wav")
     (
@@ -39,12 +48,14 @@ with tempfile.TemporaryDirectory(suffix="-discriminator") as tmpdir:
     net = SampleCNN()
     net.load_state_dict(torch.load(MODEL_PATH))
     net.eval()
-    with torch.no_grad():
-        # Iterate through frames
-        for i, frame in enumerate(map(torch.Tensor, librosa.core.stream(output, 1, 59049, 16000, fill_value=0))):
-            y = net(frame.reshape(1, -1))
-            y = y.item()
-            print("{h:02d}:{m:02d}:{s:02d}".format(**strfdelta(i)), "{} ({:.3f})".format(MICRO if y > args.alpha else MUSIC, y))
-
-
-
+    with open(raw_out, "w") as raw_file, open(text_out, "w") as text_file:
+        with torch.no_grad():
+            # Iterate through frames
+            for i, frame in enumerate(map(torch.Tensor, librosa.core.stream(output, 1, 59049, 16000, fill_value=0))):
+                y = net(frame.reshape(1, -1))
+                y = y.item()
+                raw_line = "\t".join(["{h:02d}:{m:02d}:{s:02d}".format(**strfdelta(i)), "{} ({:.3f})".format(MICRO if y > args.alpha else MUSIC, y)])
+                text_line = "\t".join(["{h:02d}:{m:02d}:{s:02d}".format(**strfdelta(i)), "{} ({:.3f})".format('speech' if y > args.alpha else 'music', y)])
+                print(raw_line)
+                raw_file.write(raw_line+"\n")
+                text_file.write(text_line+"\n")
