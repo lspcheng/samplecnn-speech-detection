@@ -48,14 +48,48 @@ with tempfile.TemporaryDirectory(suffix="-discriminator") as tmpdir:
     net = SampleCNN()
     net.load_state_dict(torch.load(MODEL_PATH))
     net.eval()
+
+    count_list = []
     with open(raw_out, "w") as raw_file, open(text_out, "w") as text_file:
         with torch.no_grad():
             # Iterate through frames
             for i, frame in enumerate(map(torch.Tensor, librosa.core.stream(output, 1, 59049, 16000, fill_value=0))):
                 y = net(frame.reshape(1, -1))
                 y = y.item()
+
+                # print(i)
+                if i == 0:
+                    if y > args.alpha:
+                        y_status = current_status = 'speech'
+                    else:
+                        y_status = current_status = 'music'
+                elif current_status == 'speech':
+                    y_status = current_status
+                    if y < args.alpha:
+                        y_status = 'music'
+                elif current_status == 'music':
+                    y_status = current_status
+                    if y > (1 - args.alpha):
+                        y_status = 'speech'
+
+                if not y_status == current_status:
+                    count_list.append((i, y))
+                else:
+                    count_list = []
+                # print(count_list)
+
+                if len(count_list) == 4:
+                    current_status = y_status
+                    print('Insert boundary at time: {0}'.format(count_list[0][0]))
+                #
+                # print(current_status, y_status)
+                # input()
+
                 raw_line = "\t".join(["{h:02d}:{m:02d}:{s:02d}".format(**strfdelta(i)), "{} ({:.3f})".format(MICRO if y > args.alpha else MUSIC, y)])
-                text_line = "\t".join(["{h:02d}:{m:02d}:{s:02d}".format(**strfdelta(i)), "{} ({:.3f})".format('speech' if y > args.alpha else 'music', y)])
                 print(raw_line)
+
+                text_line = "\t".join(["{h:02d}:{m:02d}:{s:02d}".format(**strfdelta(i)), "{} ({:.3f})".format('speech' if y > args.alpha else 'music', y)])
+                # print(i)
+
                 raw_file.write(raw_line+"\n")
                 text_file.write(text_line+"\n")
